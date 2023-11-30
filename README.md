@@ -1,4 +1,4 @@
-# ConcurrentWebProxyLogger
+# WebProxy
 
 ## Introduction
 
