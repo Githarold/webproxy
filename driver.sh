@@ -406,4 +406,3 @@ maxScore=`expr ${MAX_BASIC} + ${MAX_CACHE} + ${MAX_CONCURRENCY}`
 echo ""
 echo "totalScore: ${totalScore}/${maxScore}"
 exit
-
