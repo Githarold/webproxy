@@ -17,12 +17,14 @@ static const char *connection_key = "Connection";
 static const char *user_agent_key= "User-Agent";
 static const char *proxy_connection_key = "Proxy-Connection";
 static const char *host_key = "Host";
-void *thread(void *vargp);
+pthread_mutex_t mutex;
 
+void *thread(void *vargp);
 void doit(int connfd);
 void parse_uri(char *uri, char *hostname, char *path, int *port);
 void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio);
 int connect_endServer(char *hostname, int port, char *http_header);
+
 ssize_t Rio_readn_w(int fd, void *usrbuf, size_t n);
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t maxlen);
 ssize_t Rio_writen_w(int fd, void *usrbuf, size_t n);
@@ -34,6 +36,7 @@ int main(int argc,char **argv)
     pthread_t tid;
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    pthread_mutex_init(&mutex, NULL);
 
     if(argc != 2){
         fprintf(stderr,"usage :%s <port> \n",argv[0]);
@@ -94,15 +97,22 @@ void doit(int connfd) {
     Rio_writen_w(end_serverfd, endserver_http_header, strlen(endserver_http_header));
 
     size_t n;
+    size_t total_size = 0;
     while ((n = Rio_readlineb_w(&server_rio, buf, MAXLINE)) != 0) {
         if (n < 0) {  // Error reading from server
             fprintf(stderr, "Error: Failed to read response from server\n");
             break;
         }
         Rio_writen_w(connfd, buf, n);
+        total_size =+ n;
     }
 
     Close(end_serverfd);
+
+    if(total_size > 0)
+    {
+        format_log_entry(hostname,uri,total_size);
+    }    
 }
 
 void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio) {
@@ -185,12 +195,14 @@ void format_log_entry(char *browser_ip, char *url, size_t size)
     sprintf(log_entry, "%s: %s %s %zu\n", time_str, browser_ip, url, size);
 
     // Open the log file in append mode and write the log entry
+    pthread_mutex_lock(&mutex);
     FILE *log_file = fopen("proxy.log", "a");
     if (log_file != NULL)
     {
         fputs(log_entry, log_file);
         fclose(log_file);
     }
+    pthread_mutex_unlock(&mutex);
 }
 
 ssize_t Rio_readn_w(int fd, void *usrbuf, size_t n) {
