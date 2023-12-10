@@ -67,9 +67,9 @@ void *thread(void *vargp){
     int connfd = *(int *)vargp;
     free(vargp);
     Pthread_detach(pthread_self());
+
     doit(connfd);
     Close(connfd);
-
     return NULL;
 }
 
@@ -152,11 +152,11 @@ void build_http_header(char *http_header, char *hostname, char *path, int port, 
 inline int connect_endServer(char *hostname,int port,char *http_header){
     char portStr[100];
     sprintf(portStr,"%d",port);
-    return Open_clientfd(hostname,portStr);
+    return Open_clientfd(hostname, portStr);
 }
 
 /*parse the uri to get hostname,file path ,port*/
-void parse_uri(char *uri,char *hostname,char *path,int *port)
+void parse_uri(char *uri, char *hostname, char *path, int *port)
 {
     *port = 80;
     char* pos = strstr(uri,"//");
