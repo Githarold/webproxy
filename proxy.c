@@ -69,6 +69,8 @@ void *thread(void *vargp){
     Pthread_detach(pthread_self());
     doit(connfd);
     Close(connfd);
+
+    return NULL;
 }
 
 /*handle the client HTTP transaction*/

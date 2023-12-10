@@ -13,7 +13,7 @@ all: proxy
 csapp.o: csapp.c csapp.h
 	$(CC) $(CFLAGS) -c csapp.c
 
-proxy.o: proxy1.c csapp.h
+proxy.o: proxy.c csapp.h
 	$(CC) $(CFLAGS) -c proxy.c
 
 proxy: proxy.o csapp.o
