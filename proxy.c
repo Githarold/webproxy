@@ -23,6 +23,9 @@ void doit(int connfd);
 void parse_uri(char *uri, char *hostname, char *path, int *port);
 void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio);
 int connect_endServer(char *hostname, int port, char *http_header);
+ssize_t Rio_readn_w(int fd, void *usrbuf, size_t n);
+ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t maxlen);
+ssize_t Rio_writen_w(int fd, void *usrbuf, size_t n);
 
 int main(int argc,char **argv)
 {
@@ -60,103 +63,70 @@ void* thread(void *vargp){
 }
 
 /*handle the client HTTP transaction*/
-void doit(int connfd)
-{
-    int end_serverfd;/*the end server file descriptor*/
-
-    char buf[MAXLINE],method[MAXLINE],uri[MAXLINE],version[MAXLINE];
-    char endserver_http_header [MAXLINE];
-    /*store the request line arguments*/
-    char hostname[MAXLINE],path[MAXLINE];
+void doit(int connfd) {
+    int end_serverfd;
+    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
+    char endserver_http_header[MAXLINE];
+    char hostname[MAXLINE], path[MAXLINE];
     int port;
+    rio_t rio, server_rio;
 
-    rio_t rio,server_rio;/*rio is client's rio,server_rio is endserver's rio*/
+    Rio_readinitb(&rio, connfd);
+    if (Rio_readlineb_w(&rio, buf, MAXLINE) == 0)
+        return;  // EOF or error
+    sscanf(buf, "%s %s %s", method, uri, version);
 
-    Rio_readinitb(&rio,connfd);
-    Rio_readlineb(&rio,buf,MAXLINE);
-    sscanf(buf,"%s %s %s",method,uri,version); /*read the client request line*/
-
-    if(strcasecmp(method,"GET")){
+    if (strcasecmp(method, "GET")) {
         printf("Proxy does not implement the method\n");
         return;
     }
-    /*parse the uri to get hostname,file path ,port*/
-    parse_uri(uri,hostname,path,&port);
 
-    /*build the http header which will send to the end server*/
-    build_http_header(endserver_http_header,hostname,path,port,&rio);
+    parse_uri(uri, hostname, path, &port);
+    build_http_header(endserver_http_header, hostname, path, port, &rio);
 
-    /*connect to the end server*/
-    end_serverfd = connect_endServer(hostname,port,endserver_http_header);
-    if(end_serverfd<0){
+    end_serverfd = connect_endServer(hostname, port, endserver_http_header);
+    if (end_serverfd < 0) {
         fprintf(stderr, "Error: Failed to connect to server %s\n", hostname);
         return;
     }
 
-    Rio_readinitb(&server_rio,end_serverfd);
-    /*write the http header to endserver*/
-    Rio_writen(end_serverfd,endserver_http_header,strlen(endserver_http_header));
+    Rio_readinitb(&server_rio, end_serverfd);
+    Rio_writen_w(end_serverfd, endserver_http_header, strlen(endserver_http_header));
 
-    /*receive message from end server and send to the client*/
     size_t n;
-    size_t total_size = 0;
-    while((n=Rio_readlineb(&server_rio,buf,MAXLINE))!=0)
-    {
-        if (n < 0) 
-        {
-        fprintf(stderr, "Error: Failed to read response from server\n");
-        break;
+    while ((n = Rio_readlineb_w(&server_rio, buf, MAXLINE)) != 0) {
+        if (n < 0) {  // Error reading from server
+            fprintf(stderr, "Error: Failed to read response from server\n");
+            break;
         }
-        printf("proxy received %d bytes,then send\n",n);
-        Rio_writen(connfd,buf,n);
-        total_size += n;
-        
+        Rio_writen_w(connfd, buf, n);
     }
-    Close(end_serverfd);
 
-    if(total_size > 0)
-    {
-        format_log_entry(hostname,uri,total_size);
-    }
+    Close(end_serverfd);
 }
 
-void build_http_header(char *http_header,char *hostname,char *path,int port,rio_t *client_rio)
-{
-    char buf[MAXLINE],request_hdr[MAXLINE],other_hdr[MAXLINE],host_hdr[MAXLINE];
-    /*request line*/
-    sprintf(request_hdr,requestlint_hdr_format,path);
-    /*get other request header for client rio and change it */
-    while(Rio_readlineb(client_rio,buf,MAXLINE)>0)
-    {
-        if(strcmp(buf,endof_hdr)==0) break;/*EOF*/
+void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio) {
+    char buf[MAXLINE], request_hdr[MAXLINE], other_hdr[MAXLINE], host_hdr[MAXLINE];
+    sprintf(request_hdr, requestlint_hdr_format, path);
 
-        if(!strncasecmp(buf,host_key,strlen(host_key)))/*Host:*/
-        {
-            strcpy(host_hdr,buf);
+    while (Rio_readlineb_w(client_rio, buf, MAXLINE) > 0) {
+        if (strcmp(buf, endof_hdr) == 0) break;
+
+        if (!strncasecmp(buf, host_key, strlen(host_key))) {
+            strcpy(host_hdr, buf);
             continue;
         }
 
-        if(!strncasecmp(buf,connection_key,strlen(connection_key))
-                &&!strncasecmp(buf,proxy_connection_key,strlen(proxy_connection_key))
-                &&!strncasecmp(buf,user_agent_key,strlen(user_agent_key)))
-        {
-            strcat(other_hdr,buf);
+        if (!strncasecmp(buf, connection_key, strlen(connection_key)) &&
+            !strncasecmp(buf, proxy_connection_key, strlen(proxy_connection_key)) &&
+            !strncasecmp(buf, user_agent_key, strlen(user_agent_key))) {
+            strcat(other_hdr, buf);
         }
     }
-    if(strlen(host_hdr)==0)
-    {
-        sprintf(host_hdr,host_hdr_format,hostname);
+    if (strlen(host_hdr) == 0) {
+        sprintf(host_hdr, host_hdr_format, hostname);
     }
-    sprintf(http_header,"%s%s%s%s%s%s%s",
-            request_hdr,
-            host_hdr,
-            conn_hdr,
-            prox_hdr,
-            user_agent_hdr,
-            other_hdr,
-            endof_hdr);
-
-    return ;
+    sprintf(http_header, "%s%s%s%s%s%s%s", request_hdr, host_hdr, conn_hdr, prox_hdr, user_agent_hdr, other_hdr, endof_hdr);
 }
 
 /*Connect to the end server*/
@@ -221,4 +191,33 @@ void format_log_entry(char *browser_ip, char *url, size_t size)
         fputs(log_entry, log_file);
         fclose(log_file);
     }
+}
+
+ssize_t Rio_readn_w(int fd, void *usrbuf, size_t n) {
+    ssize_t rc;
+
+    if ((rc = rio_readn(fd, usrbuf, n)) < 0) {
+        fprintf(stderr, "Rio_readn error: %s\n", strerror(errno));
+        return 0;
+    }
+    return rc;
+}
+
+ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t maxlen) {
+    ssize_t rc;
+
+    if ((rc = rio_readlineb(rp, usrbuf, maxlen)) < 0) {
+        fprintf(stderr, "Rio_readlineb error: %s\n", strerror(errno));
+        return 0;
+    }
+    return rc;
+}
+
+ssize_t Rio_writen_w(int fd, void *usrbuf, size_t n) {
+    ssize_t rc;
+
+    if ((rc = rio_writen(fd, usrbuf, n)) < 0)
+        fprintf(stderr, "Rio_writen error: %s\n", strerror(errno));
+
+    return rc;
 }
