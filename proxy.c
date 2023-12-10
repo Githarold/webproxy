@@ -23,43 +23,49 @@ void *thread(void *vargp);
 void doit(int connfd);
 void parse_uri(char *uri, char *hostname, char *path, int *port);
 void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio);
+void format_log_entry(char *browser_ip, char *url, size_t size);
 int connect_endServer(char *hostname, int port, char *http_header);
 
 ssize_t Rio_readn_w(int fd, void *usrbuf, size_t n);
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t maxlen);
 ssize_t Rio_writen_w(int fd, void *usrbuf, size_t n);
 
-int main(int argc,char **argv)
-{
-    int listenfd, connfd;
-    char hostname[MAXLINE],port[MAXLINE];
+int main(int argc, char **argv) {
+    int listenfd, *connfdp;
+    char hostname[MAXLINE], port[MAXLINE];
     pthread_t tid;
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+
     pthread_mutex_init(&mutex, NULL);
 
-    if(argc != 2){
-        fprintf(stderr,"usage :%s <port> \n",argv[0]);
+    if (argc != 2) {
+        fprintf(stderr, "usage: %s <port>\n", argv[0]);
         exit(1);
     }
-    signal(SIGPIPE, SIG_IGN); // SIGPIPE 예외처리
+
+    signal(SIGPIPE, SIG_IGN);
 
     listenfd = Open_listenfd(argv[1]);
-    while(1){
+    while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd,(SA *)&clientaddr,&clientlen);
+        connfdp = malloc(sizeof(int));
+        *connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 
-        /*print accepted message*/
-        Getnameinfo((SA*)&clientaddr,clientlen,hostname,MAXLINE,port,MAXLINE,0);
-        printf("Accepted connection from (%s %s).\n",hostname,port);
-        Pthread_create(&tid, NULL, thread, (void *)connfd);         // 다중 쓰레딩을 통한 conncurrent 접속 구현
-        /*sequential handle the client transaction*/
+        Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
+        printf("Accepted connection from (%s, %s)\n", hostname, port);
+
+        Pthread_create(&tid, NULL, thread, connfdp);
     }
+
+    pthread_mutex_destroy(&mutex);
+
     return 0;
 }
 
-void* thread(void *vargp){
-    int connfd = (int)vargp;
+void *thread(void *vargp){
+    int connfd = *(int *)vargp;
+    free(vargp);
     Pthread_detach(pthread_self());
     doit(connfd);
     Close(connfd);
@@ -67,11 +73,10 @@ void* thread(void *vargp){
 
 /*handle the client HTTP transaction*/
 void doit(int connfd) {
-    int end_serverfd;
+    int port, end_serverfd;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char endserver_http_header[MAXLINE];
     char hostname[MAXLINE], path[MAXLINE];
-    int port;
     rio_t rio, server_rio;
 
     Rio_readinitb(&rio, connfd);
@@ -104,14 +109,16 @@ void doit(int connfd) {
             break;
         }
         Rio_writen_w(connfd, buf, n);
-        total_size =+ n;
+        total_size += n;
     }
+
+    printf("total size : %zu\n", total_size);
 
     Close(end_serverfd);
 
     if(total_size > 0)
     {
-        format_log_entry(hostname,uri,total_size);
+        format_log_entry(hostname, uri, total_size);
     }    
 }
 
