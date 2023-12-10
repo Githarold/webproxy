@@ -20,16 +20,16 @@ static const char *host_key = "Host";
 void *thread(void *vargp);
 
 void doit(int connfd);
-void parse_uri(char *uri,char *hostname,char *path,int *port);
-void build_http_header(char *http_header,char *hostname,char *path,int port,rio_t *client_rio);
-int connect_endServer(char *hostname,int port,char *http_header);
+void parse_uri(char *uri, char *hostname, char *path, int *port);
+void build_http_header(char *http_header, char *hostname, char *path, int port, rio_t *client_rio);
+int connect_endServer(char *hostname, int port, char *http_header);
 
 int main(int argc,char **argv)
 {
     int listenfd, connfd;
-    socklen_t  clientlen;
     char hostname[MAXLINE],port[MAXLINE];
     pthread_t tid;
+    socklen_t clientlen;
     struct sockaddr_storage clientaddr;
 
     if(argc != 2){
@@ -51,12 +51,14 @@ int main(int argc,char **argv)
     }
     return 0;
 }
+
 void* thread(void *vargp){
     int connfd = (int)vargp;
     Pthread_detach(pthread_self());
     doit(connfd);
     Close(connfd);
 }
+
 /*handle the client HTTP transaction*/
 void doit(int connfd)
 {
@@ -158,6 +160,7 @@ void build_http_header(char *http_header,char *hostname,char *path,int port,rio_
 
     return ;
 }
+
 /*Connect to the end server*/
 inline int connect_endServer(char *hostname,int port,char *http_header){
     char portStr[100];
