@@ -93,11 +93,9 @@ void doit(int connfd)
         return;
     }
 
-
     Rio_readinitb(&server_rio,end_serverfd);
     /*write the http header to endserver*/
     Rio_writen(end_serverfd,endserver_http_header,strlen(endserver_http_header));
-
 
     /*receive message from end server and send to the client*/
     size_t n;
