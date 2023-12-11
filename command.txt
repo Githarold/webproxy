@@ -1,0 +1,7 @@
+curl --proxy http://localhost:forxyport http://localhost:tinyport
+
+or 
+
+telnet localhost froxyport 
+
+>> GET http://127.0.0.1:tinyport
